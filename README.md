@@ -198,6 +198,34 @@ forge test -vv
 
 ---
 
+## Known limitations
+
+**Raising one share before lowering another reverts.** The roster is held at exactly 100%
+between the members and the co-op's own portion, so `setMemberShare` upward fails unless
+there is unallocated room. Lower first, or use `reconfigureMembership` to swap the whole
+roster atomically. This is the invariant working as intended, but it is a real usability
+edge and the dashboard says so on the admin panel.
+
+**A partly-allocated roster still accepts payments.** If members sum to less than 10000
+bps, a payment still splits and the unallocated portion routes to `reserveBalance` for the
+admin to hand out later with `allocateReserve`. The alternative — rejecting payments until
+the roster is exactly full — was considered and rejected: it means a buyer's transaction
+fails because of the cooperative's internal bookkeeping, which is the kind of friction that
+sends people back to the aggregator. Nothing is lost either way; the difference is only
+whether the gap is held by the co-op or blocks the payment.
+
+**The admin is trusted with the roster.** A malicious `COOP_ADMIN_ROLE` holder could remove
+members or reassign shares before a large payment. This is deliberate: the story asks for a
+transparent, admin-run split among sixteen people who know each other, not a governance
+system. What the contract guarantees is that every such change is public, logged, and
+visible on the dashboard before the next payment — which is exactly what the aggregator
+never offered. Making the role a multisig is a deployment choice, not a code change.
+
+**`MAX_MEMBERS = 200`.** The split loop is bounded so a payment can never become
+unpayable. A cooperative larger than that would need a merkle-claim design instead.
+
+---
+
 ## Beyond the brief: stateful invariant testing
 
 Worked examples only prove the orderings the author thought to write down. Checks 5, 6 and
