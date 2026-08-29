@@ -117,6 +117,44 @@ which folds it into an ordinary split.
 
 ---
 
+## The part the cooperative actually touches
+
+A contract that only a developer can operate leaves sixteen painters exactly as dependent
+on a technical middleman as the aggregator they were trying to escape. So `dashboard/` is a
+Next.js + wagmi app covering the whole job without a terminal:
+
+| Who | What they do |
+|---|---|
+| **A painter** | Connects her wallet, sees what she is owed and her share of future payments, presses Withdraw. Nobody sends it to her. |
+| **Anyone at all** | Reads the full roster — every member, every share, every unpaid balance. This is the math nobody had ever seen. |
+| **The cooperative admin** | Adds a member, removes one, changes a share. The panel only appears for an address that actually holds `COOP_ADMIN_ROLE`. |
+| **A buyer** | Pays the cooperative and sees the exact split, member by member, *before* confirming the transaction. |
+
+The carried remainder is shown in wei on the page, so the leftover paise are visible rather
+than a claim in a README.
+
+```bash
+anvil &
+export SEED_ADMIN_PK=0x…    # anvil account (0), from anvil's own startup banner
+forge script script/SeedLocal.s.sol:SeedLocal --rpc-url http://127.0.0.1:8545 --broadcast
+
+cd dashboard && npm install
+cp .env.example .env.local  # paste the printed NEXT_PUBLIC_TREASURY_ADDRESS
+npm run dev
+```
+
+`SeedLocal` puts sixteen painters on the roster at 6.25% each and pays in
+`1 ether + 7 wei` — deliberately not divisible by sixteen, so the dashboard has a real
+7-wei carried remainder to display. Verified end to end against that deployment: sixteen
+members read back at 6.25% with 0.0625 ETH each owed, `carriedRemainder` 7 wei, and
+`hasRole(COOP_ADMIN_ROLE)` true for the admin so the admin panel renders.
+
+No deliberate governance layer, no proposals, no voting. The story asks for a transparent
+admin-run split among sixteen people who know each other; a DAO would be a different
+product and a larger failure surface.
+
+---
+
 ## Contract surface
 
 | Function | Who | What it does |
