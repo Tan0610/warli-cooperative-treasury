@@ -183,7 +183,7 @@ granted to the `admin` given at construction.
 forge test -vv
 ```
 
-30 tests, grouped under headings that match the guarantees above.
+30 unit and fuzz tests grouped under headings that match the guarantees above, plus a stateful invariant suite (see below).
 
 | Guarantee | Tests |
 |---|---|
@@ -195,6 +195,65 @@ forge test -vv
 | Shares sum to a fixed denominator | `test_SharesCannotExceedTheFixedTotal`, `test_UpdatingAShareCannotPushPastTheTotal`, `test_ReconfigureMustSumToExactlyTheTotal`, `test_AllocatedPlusUnallocatedAlwaysEqualsTheTotal` |
 | No double withdrawal | `test_SecondWithdrawInARowPaysNothing`, `test_ReentrantMemberCannotBePaidTwice` |
 | Value conservation (fuzz, 512 runs each) | `testFuzz_SplitConservesValue`, `testFuzz_WithdrawPaysTheCreditedAmountExactlyOnce` |
+
+---
+
+## Beyond the brief: stateful invariant testing
+
+Worked examples only prove the orderings the author thought to write down. Checks 5, 6 and
+7 — the rounding remainder, the fixed-denominator invariant, and no double withdrawal — are
+exactly the properties that survive a hand-written test and then break on a sequence of
+membership changes nobody imagined.
+
+So `test/CooperativeTreasury.invariant.t.sol` drives randomised sequences of the five
+things that can actually happen — a member joins, leaves, has their share changed, a buyer
+pays, a painter withdraws — over six candidate painters, and asserts six system-wide
+properties after **every call in every run**:
+
+| Invariant | What it rules out |
+|---|---|
+| `allocatedNeverExceedsDenominator` | Shares summing past 10000 bps under any interleaving |
+| `cachedTotalMatchesTheRoster` | `allocatedShareBps` drifting from the actual member table |
+| `sharesAlwaysAccountForTheWholeDenominator` | Any basis point owned by nobody |
+| `balanceCoversEverythingOwed` | The treasury being unable to pay what it owes |
+| `everyWeiIsAccountedFor` | Money lost, or a balance withdrawn twice |
+| `remainderStaysDust` | The carried remainder growing into real money left behind |
+
+The conservation invariant is the sharp one: the handler tracks every wei paid in and every
+wei withdrawn independently of the contract, then asserts
+`paidIn == withdrawn + owed + reserve + remainder`. A double withdrawal breaks it
+immediately, whatever path produced it.
+
+```
+Ran 1 test for test/CooperativeTreasury.invariant.t.sol:CooperativeTreasuryInvariantTest
+[PASS] invariant_allocatedNeverExceedsDenominator
+[PASS] invariant_balanceCoversEverythingOwed
+[PASS] invariant_cachedTotalMatchesTheRoster
+[PASS] invariant_everyWeiIsAccountedFor
+[PASS] invariant_remainderStaysDust
+[PASS] invariant_sharesAlwaysAccountForTheWholeDenominator
+ CooperativeTreasuryInvariantTest invariants (runs: 256, calls: 51200, reverts: 0)
+
+╭-----------------+--------------+-------+---------+----------╮
+| Contract        | Selector     | Calls | Reverts | Discards |
++=============================================================+
+| TreasuryHandler | addMember    | 10249 | 0       | 0        |
+| TreasuryHandler | payIn        | 10087 | 0       | 0        |
+| TreasuryHandler | removeMember | 10290 | 0       | 0        |
+| TreasuryHandler | updateShare  | 10487 | 0       | 0        |
+| TreasuryHandler | withdraw     | 10087 | 0       | 0        |
+╰-----------------+--------------+-------+---------+----------╯
+
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 20.95s
+```
+
+256 runs × 200 calls — 51,200 calls, **0 reverts, 0 violations**. The zero-revert column
+matters: every action the handler takes is bounded to a *legal* one, so the run spends its
+whole budget exploring reachable states rather than bouncing off input validation.
+
+```bash
+forge test --match-contract Invariant -v
+```
 
 ---
 
