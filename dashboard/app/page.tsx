@@ -57,6 +57,25 @@ function Amount({wei, className = ""}: {wei?: bigint; className?: string}) {
 const pct = (bps: bigint) => `${(Number(bps) / 100).toFixed(Number(bps) % 100 ? 2 : 0)}%`;
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
+/**
+ * Wallet errors arrive as raw RPC text that tells a non-developer nothing and, worse,
+ * usually does not say what to actually do. The two common ones both have a concrete
+ * next step, so say it.
+ */
+function walletMessage(e: Error): string {
+  const m = e.message ?? "";
+  if (/already pending|already processing/i.test(m)) {
+    return "MetaMask already has a request waiting. Open the extension from your toolbar — the popup often opens behind this window — and approve or dismiss it.";
+  }
+  if (/user rejected|User denied|4001/i.test(m)) {
+    return "Connection cancelled in the wallet.";
+  }
+  if (/chain|network/i.test(m) && /unsupported|unrecognized|add/i.test(m)) {
+    return "Add Base Sepolia to your wallet, then try again.";
+  }
+  return m.split("\n")[0];
+}
+
 // ---------------------------------------------------------------------------
 // small pieces — deliberately not "cards"
 // ---------------------------------------------------------------------------
@@ -118,7 +137,7 @@ function Button({
 
 function TxStatus({hash, error}: {hash?: `0x${string}`; error?: Error | null}) {
   const {isLoading, isSuccess} = useWaitForTransactionReceipt({hash});
-  if (error) return <p className="mt-3 text-sm text-terracotta-hi">{error.message.split("\n")[0]}</p>;
+  if (error) return <p className="mt-3 text-sm text-terracotta-hi">{walletMessage(error)}</p>;
   if (isLoading) return <p className="mt-3 text-sm text-chalk-dim">Waiting for confirmation…</p>;
   if (isSuccess) {
     return (
@@ -261,7 +280,7 @@ export default function Home() {
                       dead button. Say what went wrong instead. */}
                   {connectError && (
                     <p className="text-right text-xs leading-relaxed text-terracotta-hi">
-                      {connectError.message.split("\n")[0]}
+                      {walletMessage(connectError)}
                     </p>
                   )}
                 </>
