@@ -1,7 +1,7 @@
 "use client";
 
 import {useState} from "react";
-import {formatEther, isAddress, parseEther, type Address} from "viem";
+import {formatEther, formatUnits, isAddress, parseEther, type Address} from "viem";
 import {
   useAccount,
   useBalance,
@@ -13,23 +13,73 @@ import {
 } from "wagmi";
 import {treasuryAbi} from "@/lib/abi";
 import {treasuryAddress} from "@/lib/wagmi";
+import {WarliFrieze, WarliMark} from "./WarliFrieze";
 
-const BPS = 10_000;
+const BPS = 10_000n;
+const EXPLORER = "https://sepolia.basescan.org";
 
-const pct = (bps: bigint | number) => `${(Number(bps) / 100).toFixed(Number(bps) % 100 ? 2 : 0)}%`;
-const eth = (wei: bigint) => `${Number(formatEther(wei)).toLocaleString(undefined, {maximumFractionDigits: 6})}`;
+/**
+ * Testnet amounts are tiny, and "0.000006 ETH" in a column of sixteen rows is unreadable.
+ * Step down to gwei and then wei so the figure keeps its significant digits instead of
+ * dissolving into zeros — the point of this page is that the math is legible.
+ */
+function amount(wei: bigint): {value: string; unit: string} {
+  if (wei === 0n) return {value: "0", unit: "ETH"};
+  const asEth = Number(formatEther(wei));
+  if (asEth >= 0.0001) {
+    return {value: asEth.toLocaleString(undefined, {maximumFractionDigits: 6}), unit: "ETH"};
+  }
+  const asGwei = Number(formatUnits(wei, 9));
+  if (asGwei >= 1) {
+    return {value: asGwei.toLocaleString(undefined, {maximumFractionDigits: 3}), unit: "gwei"};
+  }
+  return {value: wei.toString(), unit: "wei"};
+}
+
+const Amount = ({wei, className = ""}: {wei: bigint; className?: string}) => {
+  const {value, unit} = amount(wei);
+  return (
+    <span className={`tnum ${className}`}>
+      {value}
+      <span className="ml-1 text-[0.72em] text-chalk-faint">{unit}</span>
+    </span>
+  );
+};
+
+const pct = (bps: bigint) => `${(Number(bps) / 100).toFixed(Number(bps) % 100 ? 2 : 0)}%`;
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
 // ---------------------------------------------------------------------------
-// shared bits
+// primitives
 // ---------------------------------------------------------------------------
 
-function Panel({title, subtitle, children}: {title: string; subtitle?: string; children: React.ReactNode}) {
+function Panel({
+  title,
+  subtitle,
+  children,
+  accent = false,
+}: {
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+  accent?: boolean;
+}) {
   return (
-    <section className="rounded-lg border border-[#d9cbb4] bg-[#fffaf1] p-5 shadow-sm">
-      <h2 className="text-sm font-semibold uppercase tracking-widest text-[#a8452a]">{title}</h2>
-      {subtitle && <p className="mt-1 text-sm text-[#6b5a4b]">{subtitle}</p>}
-      <div className="mt-4">{children}</div>
+    <section
+      className={`rounded-xl border ${
+        accent ? "border-ochre/35 bg-wall-2/60" : "border-line bg-wall"
+      } p-5 sm:p-6`}
+    >
+      <div className="flex items-start gap-2.5">
+        <WarliMark className="mt-0.5 h-5 w-2.5 shrink-0 text-ochre/70" />
+        <div className="min-w-0">
+          <h2 className="font-[family-name:var(--font-display)] text-lg leading-tight text-ochre">
+            {title}
+          </h2>
+          {subtitle && <p className="mt-1 text-sm leading-relaxed text-chalk-dim">{subtitle}</p>}
+        </div>
+      </div>
+      <div className="mt-5">{children}</div>
     </section>
   );
 }
@@ -38,32 +88,65 @@ function Field(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       {...props}
-      className="w-full rounded border border-[#d9cbb4] bg-white px-3 py-2 text-sm outline-none focus:border-[#a8452a]"
+      className="w-full rounded-lg border border-line bg-ground/70 px-3 py-2.5 font-[family-name:var(--font-mono)] text-sm text-chalk placeholder:text-chalk-faint/70 outline-none transition focus:border-ochre/70 focus:ring-1 focus:ring-ochre/30"
     />
   );
 }
 
 function Button({
   children,
+  variant = "solid",
   ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & {children: React.ReactNode}) {
-  return (
-    <button
-      {...props}
-      className="rounded bg-[#a8452a] px-4 py-2 text-sm font-medium text-[#fffaf1] transition hover:bg-[#8d3721] disabled:cursor-not-allowed disabled:opacity-40"
-    >
-      {children}
-    </button>
-  );
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & {variant?: "solid" | "quiet"}) {
+  const base =
+    "rounded-lg px-4 py-2.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-35";
+  const styles =
+    variant === "solid"
+      ? "bg-terracotta text-chalk hover:bg-terracotta-hi"
+      : "border border-line text-chalk-dim hover:border-ochre/50 hover:text-chalk";
+  return <button {...props} className={`${base} ${styles}`}>{children}</button>;
 }
 
-/** Surfaces a pending/failed transaction instead of leaving the user guessing. */
 function TxStatus({hash, error}: {hash?: `0x${string}`; error?: Error | null}) {
   const {isLoading, isSuccess} = useWaitForTransactionReceipt({hash});
-  if (error) return <p className="mt-2 text-sm text-[#a8452a]">{error.message.split("\n")[0]}</p>;
-  if (isLoading) return <p className="mt-2 text-sm text-[#6b5a4b]">Waiting for confirmation…</p>;
-  if (isSuccess) return <p className="mt-2 text-sm text-[#3f6b3f]">Done.</p>;
+  if (error) {
+    return (
+      <p className="mt-3 text-sm text-terracotta-hi">{error.message.split("\n")[0]}</p>
+    );
+  }
+  if (isLoading) return <p className="mt-3 text-sm text-chalk-dim">Waiting for confirmation…</p>;
+  if (isSuccess) {
+    return (
+      <p className="mt-3 text-sm text-leaf">
+        Done.{" "}
+        {hash && (
+          <a
+            className="underline underline-offset-2 hover:text-chalk"
+            href={`${EXPLORER}/tx/${hash}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            View transaction
+          </a>
+        )}
+      </p>
+    );
+  }
   return null;
+}
+
+function Stat({label, wei, hint}: {label: string; wei?: bigint; hint?: string}) {
+  return (
+    <div className="rounded-xl border border-line bg-wall p-4">
+      <p className="text-[0.7rem] font-medium uppercase tracking-[0.14em] text-chalk-faint">
+        {label}
+      </p>
+      <p className="mt-2 font-[family-name:var(--font-display)] text-xl text-chalk">
+        {wei === undefined ? <span className="text-chalk-faint">…</span> : <Amount wei={wei} />}
+      </p>
+      {hint && <p className="mt-1 text-xs text-chalk-faint">{hint}</p>}
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -76,30 +159,18 @@ export default function Home() {
   const {disconnect} = useDisconnect();
 
   const configured = isAddress(treasuryAddress);
-
-  const members = useReadContract({
-    address: treasuryAddress,
-    abi: treasuryAbi,
-    functionName: "getMembers",
-    query: {enabled: configured},
-  });
-
-  const held = useBalance({address: treasuryAddress, query: {enabled: configured}});
-
   const common = {address: treasuryAddress, abi: treasuryAbi, query: {enabled: configured}} as const;
 
+  const members = useReadContract({...common, functionName: "getMembers"});
+  const held = useBalance({address: treasuryAddress, query: {enabled: configured}});
   const totalReceived = useReadContract({...common, functionName: "totalReceived"});
   const reserve = useReadContract({...common, functionName: "reserveBalance"});
   const remainder = useReadContract({...common, functionName: "carriedRemainder"});
   const unallocated = useReadContract({...common, functionName: "unallocatedShareBps"});
   const owed = useReadContract({...common, functionName: "totalOwedToMembers"});
+  const solvent = useReadContract({...common, functionName: "isSolvent"});
 
-  const adminRole = useReadContract({
-    address: treasuryAddress,
-    abi: treasuryAbi,
-    functionName: "COOP_ADMIN_ROLE",
-    query: {enabled: configured},
-  });
+  const adminRole = useReadContract({...common, functionName: "COOP_ADMIN_ROLE"});
   const isAdmin = useReadContract({
     address: treasuryAddress,
     abi: treasuryAbi,
@@ -108,120 +179,201 @@ export default function Home() {
     query: {enabled: configured && !!adminRole.data && !!address},
   });
 
-  const myShare = members.data?.find((m) => m.account.toLowerCase() === address?.toLowerCase());
+  const mine = members.data?.find((m) => m.account.toLowerCase() === address?.toLowerCase());
 
   if (!configured) {
     return (
-      <main className="mx-auto max-w-3xl p-10">
-        <h1 className="text-2xl font-semibold">Treasury address not set</h1>
-        <p className="mt-3 text-[#6b5a4b]">
-          Copy <code className="rounded bg-[#efe6d6] px-1">.env.example</code> to{" "}
-          <code className="rounded bg-[#efe6d6] px-1">.env.local</code> and set{" "}
-          <code className="rounded bg-[#efe6d6] px-1">NEXT_PUBLIC_TREASURY_ADDRESS</code> to a deployed
-          CooperativeTreasury, then restart the dev server.
+      <main className="mx-auto max-w-2xl p-10">
+        <h1 className="font-[family-name:var(--font-display)] text-2xl text-ochre">
+          No treasury configured
+        </h1>
+        <p className="mt-3 text-chalk-dim">
+          Set <code className="rounded bg-wall-2 px-1.5 py-0.5 text-chalk">NEXT_PUBLIC_TREASURY_ADDRESS</code>{" "}
+          to a deployed CooperativeTreasury and restart.
         </p>
       </main>
     );
   }
 
   return (
-    <main className="mx-auto max-w-5xl space-y-6 p-6 md:p-10">
-      {/* header ---------------------------------------------------------- */}
-      <header className="flex flex-wrap items-start justify-between gap-4 border-b border-[#d9cbb4] pb-6">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Palghar Warli Cooperative</h1>
-          <p className="mt-1 max-w-xl text-[#6b5a4b]">
-            The math the aggregator never showed anyone. Every member&apos;s share, every payment that came
-            in, and every rupee still owed — readable by anyone, changeable only by the cooperative.
-          </p>
-          <p className="mt-2 font-mono text-xs text-[#8a7663]">{treasuryAddress}</p>
+    <main className="mx-auto max-w-5xl px-5 pb-20 pt-8 sm:px-8">
+      {/* ---------------- header ---------------- */}
+      <header>
+        <WarliFrieze className="h-8 w-full max-w-md text-ochre/45" />
+
+        <div className="mt-6 flex flex-wrap items-start justify-between gap-6">
+          <div className="max-w-xl">
+            <h1 className="font-[family-name:var(--font-display)] text-[2.1rem] leading-[1.1] text-chalk sm:text-[2.6rem]">
+              Palghar Warli Cooperative
+            </h1>
+            <p className="mt-3 text-[0.95rem] leading-relaxed text-chalk-dim">
+              Sixteen painters, one treasury. Buyer money splits across whoever the members
+              actually are today, by a share anyone can read — and each painter takes her own.
+              This is the math the aggregator never showed anyone.
+            </p>
+          </div>
+
+          <div className="flex flex-col items-end gap-2">
+            {isConnected ? (
+              <>
+                <span className="rounded-lg border border-line bg-wall px-3 py-1.5 font-[family-name:var(--font-mono)] text-sm text-chalk">
+                  {short(address!)}
+                </span>
+                <button
+                  onClick={() => disconnect()}
+                  className="text-xs text-chalk-faint underline underline-offset-2 hover:text-ochre"
+                >
+                  disconnect
+                </button>
+              </>
+            ) : (
+              connectors.map((c) => (
+                <Button key={c.uid} onClick={() => connect({connector: c})}>
+                  Connect {c.name}
+                </Button>
+              ))
+            )}
+          </div>
         </div>
 
-        {isConnected ? (
-          <div className="text-right">
-            <p className="font-mono text-sm">{short(address!)}</p>
-            <button onClick={() => disconnect()} className="text-xs text-[#a8452a] underline">
-              disconnect
-            </button>
-          </div>
-        ) : (
-          <div className="flex gap-2">
-            {connectors.map((c) => (
-              <Button key={c.uid} onClick={() => connect({connector: c})}>
-                Connect {c.name}
-              </Button>
-            ))}
-          </div>
-        )}
+        <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+          <a
+            href={`${EXPLORER}/address/${treasuryAddress}`}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-md border border-line bg-wall px-2.5 py-1.5 font-[family-name:var(--font-mono)] text-chalk-dim transition hover:border-ochre/50 hover:text-chalk"
+          >
+            {treasuryAddress}
+          </a>
+          <span className="text-chalk-faint">Base Sepolia</span>
+          {solvent.data && (
+            <span className="text-leaf">
+              ● every wei accounted for
+            </span>
+          )}
+        </div>
+
+        <div className="rule-ochre mt-6" />
       </header>
 
-      {/* summary --------------------------------------------------------- */}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        {[
-          ["Received all-time", totalReceived.data !== undefined ? `${eth(totalReceived.data)} ETH` : "…"],
-          ["Held right now", held.data ? `${eth(held.data.value)} ETH` : "…"],
-          ["Owed to members", owed.data !== undefined ? `${eth(owed.data)} ETH` : "…"],
-          ["Co-op reserve", reserve.data !== undefined ? `${eth(reserve.data)} ETH` : "…"],
-        ].map(([label, value]) => (
-          <div key={label} className="rounded-lg border border-[#d9cbb4] bg-[#fffaf1] p-4">
-            <p className="text-xs uppercase tracking-wider text-[#8a7663]">{label}</p>
-            <p className="mt-1 text-lg font-semibold">{value}</p>
-          </div>
-        ))}
+      {/* ---------------- the numbers ---------------- */}
+      <div className="mt-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Stat label="Received all-time" wei={totalReceived.data} />
+        <Stat label="Held right now" wei={held.data?.value} />
+        <Stat label="Owed to members" wei={owed.data} hint="waiting to be pulled" />
+        <Stat
+          label="Carried remainder"
+          wei={remainder.data}
+          hint="dust, folded into the next split"
+        />
       </div>
 
-      {/* your share ------------------------------------------------------ */}
-      {isConnected && <YourShare share={myShare} />}
+      <div className="mt-8 space-y-5">
+        {isConnected && <YourShare share={mine} />}
 
-      {/* roster ---------------------------------------------------------- */}
-      <Panel
-        title="Who is in the cooperative, and on what share"
-        subtitle="Read live from the contract. A payment arriving now would divide exactly like this."
-      >
-        {members.isLoading && <p className="text-sm text-[#6b5a4b]">Loading the roster…</p>}
-        {members.data?.length === 0 && (
-          <p className="text-sm text-[#6b5a4b]">No members registered yet.</p>
-        )}
-        {!!members.data?.length && (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-[#e4d8c4] text-left text-xs uppercase tracking-wider text-[#8a7663]">
-                <th className="pb-2">Member</th>
-                <th className="pb-2">Share</th>
-                <th className="pb-2 text-right">Waiting to be withdrawn</th>
-              </tr>
-            </thead>
-            <tbody>
-              {members.data.map((m) => (
-                <tr
-                  key={m.account}
-                  className={`border-b border-[#efe6d6] ${
-                    m.account.toLowerCase() === address?.toLowerCase() ? "bg-[#f7eddc]" : ""
-                  }`}
-                >
-                  <td className="py-2 font-mono text-xs">{m.account}</td>
-                  <td className="py-2">{pct(m.shareBps)}</td>
-                  <td className="py-2 text-right">{eth(m.withdrawable)} ETH</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        {/* ---------------- roster ---------------- */}
+        <Panel
+          title="Who is in the cooperative, and on what share"
+          subtitle="Read live from the contract. A payment arriving now would divide exactly like this."
+        >
+          {members.isLoading && <p className="text-sm text-chalk-dim">Reading the roster…</p>}
 
-        <p className="mt-4 text-xs text-[#8a7663]">
-          Shares total {unallocated.data !== undefined ? pct(BigInt(BPS) - unallocated.data) : "…"} allocated
-          to members
-          {unallocated.data ? `, ${pct(unallocated.data)} held by the cooperative` : ""}. Rounding left over
-          from the last split: {remainder.data !== undefined ? `${remainder.data.toString()} wei` : "…"} —
-          carried into the next payment, not lost.
-        </p>
-      </Panel>
+          {members.data?.length === 0 && (
+            <p className="text-sm text-chalk-dim">No members registered yet.</p>
+          )}
 
-      {/* admin ----------------------------------------------------------- */}
-      {isAdmin.data && <AdminPanel />}
+          {!!members.data?.length && (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[34rem] text-sm">
+                <thead>
+                  <tr className="border-b border-line text-left text-[0.68rem] uppercase tracking-[0.13em] text-chalk-faint">
+                    <th className="pb-2.5 font-medium">Member</th>
+                    <th className="pb-2.5 font-medium">Share</th>
+                    <th className="pb-2.5 text-right font-medium">Waiting to be withdrawn</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {members.data.map((m) => {
+                    const isMe = m.account.toLowerCase() === address?.toLowerCase();
+                    return (
+                      <tr
+                        key={m.account}
+                        className={`border-b border-line/50 transition ${
+                          isMe ? "bg-ochre/10" : "hover:bg-wall-2/60"
+                        }`}
+                      >
+                        <td className="py-2.5">
+                          <a
+                            href={`${EXPLORER}/address/${m.account}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-[family-name:var(--font-mono)] text-[0.82rem] text-chalk-dim transition hover:text-ochre"
+                          >
+                            {short(m.account)}
+                          </a>
+                          {isMe && (
+                            <span className="ml-2 rounded bg-ochre/20 px-1.5 py-0.5 text-[0.65rem] uppercase tracking-wider text-ochre">
+                              you
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className="tnum w-12 text-chalk">{pct(m.shareBps)}</span>
+                            <span className="h-1 w-20 overflow-hidden rounded-full bg-line">
+                              <span
+                                className="block h-full bg-ochre/70"
+                                style={{width: `${Number(m.shareBps) / 100}%`}}
+                              />
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-2.5 text-right text-chalk">
+                          <Amount wei={m.withdrawable} />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
 
-      {/* buyer ----------------------------------------------------------- */}
-      <BuyerPanel />
+          <p className="mt-5 border-t border-line/60 pt-4 text-xs leading-relaxed text-chalk-faint">
+            {unallocated.data !== undefined && (
+              <>
+                <span className="text-chalk-dim">{pct(BPS - unallocated.data)}</span> allocated to
+                members
+                {unallocated.data > 0n && (
+                  <>
+                    , <span className="text-chalk-dim">{pct(unallocated.data)}</span> held by the
+                    cooperative
+                  </>
+                )}
+                {". "}
+              </>
+            )}
+            Integer division never divides evenly across sixteen shares; the leftover{" "}
+            {remainder.data !== undefined ? (
+              <span className="text-chalk-dim">{remainder.data.toString()} wei</span>
+            ) : (
+              "…"
+            )}{" "}
+            is carried into the next payment rather than dropped, or quietly kept by whoever
+            runs the contract.
+          </p>
+        </Panel>
+
+        {isAdmin.data && <AdminPanel />}
+        <BuyerPanel />
+      </div>
+
+      <footer className="mt-12 flex flex-wrap items-center justify-between gap-4 border-t border-line pt-6 text-xs text-chalk-faint">
+        <span>
+          Road to Devcon II · Art, Culture &amp; Ethereum in India · Problem 3
+        </span>
+        <WarliFrieze className="h-6 w-40 text-ochre/25" />
+      </footer>
     </main>
   );
 }
@@ -236,20 +388,27 @@ function YourShare({share}: {share?: {account: Address; shareBps: bigint; withdr
   if (!share) {
     return (
       <Panel title="Your share">
-        <p className="text-sm text-[#6b5a4b]">
-          This wallet is not on the roster. Only current members accrue a share of payments.
+        <p className="text-sm text-chalk-dim">
+          This wallet is not on the roster, so it accrues nothing from payments. Only current
+          members do — which is the point.
         </p>
       </Panel>
     );
   }
 
   return (
-    <Panel title="Your share" subtitle="Nobody sends this to you. You take it, whenever you want it.">
-      <div className="flex flex-wrap items-end justify-between gap-4">
+    <Panel
+      title="Your share"
+      subtitle="Nobody sends this to you. You take it, whenever you want it."
+      accent
+    >
+      <div className="flex flex-wrap items-end justify-between gap-5">
         <div>
-          <p className="text-3xl font-semibold">{eth(share.withdrawable)} ETH</p>
-          <p className="mt-1 text-sm text-[#6b5a4b]">
-            waiting for you · your share of future payments is {pct(share.shareBps)}
+          <p className="font-[family-name:var(--font-display)] text-4xl text-chalk">
+            <Amount wei={share.withdrawable} />
+          </p>
+          <p className="mt-1.5 text-sm text-chalk-dim">
+            waiting for you · {pct(share.shareBps)} of every future payment
           </p>
         </div>
         <Button
@@ -279,6 +438,8 @@ function AdminPanel() {
   const [updPct, setUpdPct] = useState("");
 
   const toBps = (percent: string) => BigInt(Math.round(Number(percent) * 100));
+  const call = (functionName: "addMember" | "removeMember" | "setMemberShare", args: readonly unknown[]) =>
+    writeContract({address: treasuryAddress, abi: treasuryAbi, functionName, args} as never);
 
   return (
     <Panel
@@ -286,8 +447,8 @@ function AdminPanel() {
       subtitle="Adding or removing a member changes who the next payment reaches. Shares are entered as percentages."
     >
       <div className="grid gap-6 md:grid-cols-3">
-        <div className="space-y-2">
-          <p className="text-sm font-medium">Add a member</p>
+        <div className="space-y-2.5">
+          <p className="text-sm font-medium text-chalk">Add a member</p>
           <Field placeholder="0x… address" value={addAddr} onChange={(e) => setAddAddr(e.target.value)} />
           <Field
             placeholder="share, e.g. 6.25"
@@ -297,46 +458,32 @@ function AdminPanel() {
           />
           <Button
             disabled={!isAddress(addAddr) || !addPct || isPending}
-            onClick={() =>
-              writeContract({
-                address: treasuryAddress,
-                abi: treasuryAbi,
-                functionName: "addMember",
-                args: [addAddr as Address, toBps(addPct)],
-              })
-            }
+            onClick={() => call("addMember", [addAddr as Address, toBps(addPct)])}
           >
             Add
           </Button>
         </div>
 
-        <div className="space-y-2">
-          <p className="text-sm font-medium">Remove a member</p>
+        <div className="space-y-2.5">
+          <p className="text-sm font-medium text-chalk">Remove a member</p>
           <Field
             placeholder="0x… address"
             value={removeAddr}
             onChange={(e) => setRemoveAddr(e.target.value)}
           />
-          <p className="text-xs text-[#8a7663]">
-            They stop sharing in future payments. Anything already owed to them stays theirs.
+          <p className="text-xs leading-relaxed text-chalk-faint">
+            They stop sharing in future payments. Anything already owed stays theirs.
           </p>
           <Button
             disabled={!isAddress(removeAddr) || isPending}
-            onClick={() =>
-              writeContract({
-                address: treasuryAddress,
-                abi: treasuryAbi,
-                functionName: "removeMember",
-                args: [removeAddr as Address],
-              })
-            }
+            onClick={() => call("removeMember", [removeAddr as Address])}
           >
             Remove
           </Button>
         </div>
 
-        <div className="space-y-2">
-          <p className="text-sm font-medium">Change a share</p>
+        <div className="space-y-2.5">
+          <p className="text-sm font-medium text-chalk">Change a share</p>
           <Field placeholder="0x… address" value={updAddr} onChange={(e) => setUpdAddr(e.target.value)} />
           <Field
             placeholder="new share, e.g. 8"
@@ -346,22 +493,17 @@ function AdminPanel() {
           />
           <Button
             disabled={!isAddress(updAddr) || !updPct || isPending}
-            onClick={() =>
-              writeContract({
-                address: treasuryAddress,
-                abi: treasuryAbi,
-                functionName: "setMemberShare",
-                args: [updAddr as Address, toBps(updPct)],
-              })
-            }
+            onClick={() => call("setMemberShare", [updAddr as Address, toBps(updPct)])}
           >
             Update
           </Button>
         </div>
       </div>
-      <p className="mt-4 text-xs text-[#8a7663]">
-        Shares are held at exactly 100% between the members and the cooperative&apos;s own portion. Raising
-        one member above what is unallocated will be rejected — lower another first.
+
+      <p className="mt-5 border-t border-line/60 pt-4 text-xs leading-relaxed text-chalk-faint">
+        Shares are held at exactly 100% between the members and the cooperative&apos;s own
+        portion, so raising one member above what is unallocated will be rejected — lower
+        another first.
       </p>
       <TxStatus hash={hash} error={error} />
     </Panel>
@@ -374,15 +516,16 @@ function AdminPanel() {
 
 function BuyerPanel() {
   const {writeContract, data: hash, error, isPending} = useWriteContract();
-  const [amount, setAmount] = useState("");
+  const [value, setValue] = useState("");
   const [memo, setMemo] = useState("");
 
+  const valid = !!value && Number(value) > 0;
   const preview = useReadContract({
     address: treasuryAddress,
     abi: treasuryAbi,
     functionName: "previewSplit",
-    args: amount && Number(amount) > 0 ? [parseEther(amount)] : undefined,
-    query: {enabled: !!amount && Number(amount) > 0},
+    args: valid ? [parseEther(value)] : undefined,
+    query: {enabled: valid},
   });
 
   return (
@@ -391,53 +534,62 @@ function BuyerPanel() {
       subtitle="The split happens in the same transaction, across whoever is on the roster at that moment."
     >
       <div className="flex flex-wrap gap-3">
-        <div className="min-w-40 flex-1">
+        <div className="min-w-[10rem] flex-1">
           <Field
             placeholder="amount in ETH"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
             inputMode="decimal"
           />
         </div>
-        <div className="min-w-40 flex-1">
+        <div className="min-w-[10rem] flex-1">
           <Field placeholder="order reference" value={memo} onChange={(e) => setMemo(e.target.value)} />
         </div>
         <Button
-          disabled={!amount || Number(amount) <= 0 || isPending}
+          disabled={!valid || isPending}
           onClick={() =>
             writeContract({
               address: treasuryAddress,
               abi: treasuryAbi,
               functionName: "payIn",
               args: [memo || "order"],
-              value: parseEther(amount),
+              value: parseEther(value),
             })
           }
         >
-          Pay
+          {isPending ? "Confirm…" : "Pay"}
         </Button>
       </div>
 
       {preview.data && (
-        <div className="mt-4 rounded border border-[#e4d8c4] bg-[#f9f2e6] p-3 text-sm">
-          <p className="mb-2 text-xs uppercase tracking-wider text-[#8a7663]">
+        <div className="mt-5 rounded-lg border border-line bg-ground/60 p-4">
+          <p className="mb-3 text-[0.68rem] uppercase tracking-[0.13em] text-chalk-faint">
             This is exactly how it would divide
           </p>
-          {preview.data[0].map((acct, i) => (
-            <div key={acct} className="flex justify-between font-mono text-xs">
-              <span>{short(acct)}</span>
-              <span>{eth(preview.data![1][i]!)} ETH</span>
-            </div>
-          ))}
+          <div className="max-h-56 space-y-1 overflow-y-auto pr-1">
+            {preview.data[0].map((acct, i) => (
+              <div
+                key={acct}
+                className="flex justify-between font-[family-name:var(--font-mono)] text-xs"
+              >
+                <span className="text-chalk-dim">{short(acct)}</span>
+                <span className="text-chalk">
+                  <Amount wei={preview.data![1][i]!} />
+                </span>
+              </div>
+            ))}
+          </div>
           {preview.data[2] > 0n && (
-            <div className="flex justify-between font-mono text-xs text-[#8a7663]">
+            <div className="mt-2 flex justify-between border-t border-line/60 pt-2 font-[family-name:var(--font-mono)] text-xs text-chalk-faint">
               <span>co-op reserve</span>
-              <span>{eth(preview.data[2])} ETH</span>
+              <span>
+                <Amount wei={preview.data[2]} />
+              </span>
             </div>
           )}
-          <div className="mt-1 flex justify-between border-t border-[#e4d8c4] pt-1 font-mono text-xs text-[#8a7663]">
-            <span>carried to next payment</span>
-            <span>{preview.data[3].toString()} wei</span>
+          <div className="mt-2 flex justify-between border-t border-line/60 pt-2 font-[family-name:var(--font-mono)] text-xs text-chalk-faint">
+            <span>carried to the next payment</span>
+            <span className="tnum">{preview.data[3].toString()} wei</span>
           </div>
         </div>
       )}
