@@ -154,8 +154,11 @@ which folds it into an ordinary split.
 
 ## Live on Base Sepolia
 
-Deployed, seeded, and readable right now — full details in
-**[DEPLOYMENTS.md](DEPLOYMENTS.md)**.
+### → **[warli-cooperative-treasury.vercel.app](https://warli-cooperative-treasury.vercel.app)**
+
+The dashboard is hosted and public. It reads the deployed contract directly, so the roster,
+the shares, the unpaid balances and the carried remainder are all live chain state — not a
+demo fixture. Full details in **[DEPLOYMENTS.md](DEPLOYMENTS.md)**.
 
 `CooperativeTreasury` → [`0x617830218A2C86a34F48a5D54e5F5e8D19217732`](https://sepolia.basescan.org/address/0x617830218A2C86a34F48a5D54e5F5e8D19217732)
 

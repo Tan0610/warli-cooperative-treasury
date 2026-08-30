@@ -74,3 +74,18 @@ forge verify-contract 0x617830218A2C86a34F48a5D54e5F5e8D19217732 \
   --chain-id 84532 --verifier sourcify \
   --constructor-args $(cast abi-encode "constructor(address)" 0xA39D127B021196AA7Eec7427d4c9af19001A086b)
 ```
+
+## Hosted dashboard
+
+**https://warli-cooperative-treasury.vercel.app**
+
+Public, no login. It reads the live Base Sepolia treasury above, so the roster, every
+share, every unpaid balance and the 7-wei carried remainder load from the chain rather
+than from fixtures. Connect a wallet on Base Sepolia and the "Your share" panel fills in;
+connect the admin address and the membership controls appear.
+
+The treasury address is compiled in as a default (`dashboard/lib/wagmi.ts`) rather than
+read only from an environment variable — a treasury address is public by construction, and
+a fresh clone or a hosted build should not render an empty page because a variable was
+missed. `NEXT_PUBLIC_TREASURY_ADDRESS` still overrides it, for a local anvil or your own
+deployment.
