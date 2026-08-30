@@ -52,3 +52,25 @@ cast call 0x617830218A2C86a34F48a5D54e5F5e8D19217732 "isSolvent()(bool)"        
 > its private key was exposed during development. It holds `COOP_ADMIN_ROLE`, which makes
 > this a demonstration rather than a production instance — a real cooperative would put
 > that role behind a multisig.
+
+## Source verification
+
+Verified on **Sourcify** with an exact match on both creation and runtime bytecode, so the
+deployed code is provably the code in this repo:
+
+- https://repo.sourcify.dev/84532/0x617830218A2C86a34F48a5D54e5F5e8D19217732
+
+```bash
+curl -s https://sourcify.dev/server/v2/contract/84532/0x617830218A2C86a34F48a5D54e5F5e8D19217732
+# {"match":"match","creationMatch":"match","runtimeMatch":"match", ...}
+```
+
+Sourcify rather than Basescan because it needs no API key, and Basescan surfaces
+Sourcify-verified sources anyway. Reproduce with:
+
+```bash
+forge verify-contract 0x617830218A2C86a34F48a5D54e5F5e8D19217732 \
+  src/CooperativeTreasury.sol:CooperativeTreasury \
+  --chain-id 84532 --verifier sourcify \
+  --constructor-args $(cast abi-encode "constructor(address)" 0xA39D127B021196AA7Eec7427d4c9af19001A086b)
+```
