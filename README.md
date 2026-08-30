@@ -117,6 +117,29 @@ which folds it into an ordinary split.
 
 ---
 
+## Live on Base Sepolia
+
+Deployed, seeded, and readable right now — full details in
+**[DEPLOYMENTS.md](DEPLOYMENTS.md)**.
+
+`CooperativeTreasury` → [`0x617830218A2C86a34F48a5D54e5F5e8D19217732`](https://sepolia.basescan.org/address/0x617830218A2C86a34F48a5D54e5F5e8D19217732)
+
+Sixteen painters at 625 bps each, fully allocated, with one buyer payment of
+`100000000000007 wei` that deliberately does not divide by sixteen. Read back from the
+live contract: `memberCount() = 16`, `unallocatedShareBps() = 0`,
+**`carriedRemainder() = 7 wei`**, `isSolvent() = true`.
+
+Those 7 wei are the point — the dust was carried, not dropped, and you can see it on a
+public network rather than take the README's word for it.
+
+```bash
+cd dashboard && npm install
+echo "NEXT_PUBLIC_TREASURY_ADDRESS=0x617830218A2C86a34F48a5D54e5F5e8D19217732" > .env.local
+npm run dev
+```
+
+---
+
 ## The part the cooperative actually touches
 
 A contract that only a developer can operate leaves sixteen painters exactly as dependent
