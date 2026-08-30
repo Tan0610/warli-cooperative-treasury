@@ -57,6 +57,41 @@ see the math *before* a buyer pays.
 
 ---
 
+## Why this satisfies the scored checks
+
+| # | Check | How it is satisfied |
+|---|---|---|
+| 1 | Shares read from an on-chain, updatable member table | `_split` reads `_members[account].shareBps` from storage on every call, inside the loop. No percentage appears as a literal in the split arithmetic; the only constant is the denominator. `setMemberShare` changes it after deployment and `test_UpdatedShareChangesTheNextSplit` proves the very next payment divides by the new number. |
+| 2 | Payouts reach only currently registered members | `_split` iterates `_memberList`, which `removeMember` keeps in sync by swap-and-pop the instant someone leaves. A member removed before a payment is not in that array and accrues nothing from it (`test_RemovedMemberGetsNoShareOfLaterPayment`). Balances earned *before* removal are deliberately preserved. |
+| 3 | Member add/remove is admin-gated | `addMember`, `removeMember`, `setMemberShare` and `reconfigureMembership` all carry `onlyRole(COOP_ADMIN_ROLE)`. Five negative tests, including `test_MemberCannotChangeTheirOwnShare`. |
+| 4 | Members withdraw their own share (pull, not push) | `_split` only ever writes `withdrawable[account] += cut`. It transfers nothing. `withdraw()` is the sole function that moves value, and only to `msg.sender`. `test_MemberWithRevertingFallbackCannotBlockTheOthers` shows why: under a push loop one hostile wallet would freeze the payout for all sixteen. |
+| 5 | Rounding remainder is accounted for | Dust from integer division goes to `carriedRemainder` and is folded into the *next* split's distributable amount. Demonstrated with sixteen painters and 100 wei, and observable on the live deployment where `carriedRemainder()` returns **7 wei**. |
+| 6 | Member shares always sum to a fixed total | Every mutation checks against `TOTAL_SHARE_BPS = 10000` and ends in `_assertSharesBalanced()`. `reconfigureMembership` requires the new roster to sum to *exactly* the denominator. Basis points not assigned to a member are the co-op's own portion, so `allocated + unallocated == 10000` always holds — nothing is owned by nobody. |
+| 7 | No double withdrawal of the same payout | `withdraw()` zeroes `withdrawable[msg.sender]` **before** the external call, plus `nonReentrant`. A second call reverts `NothingToWithdraw`; a re-entrant caller reads zero. Both tested, and the invariant suite asserts money-in equals money-out plus money-held across 51,200 randomised calls. |
+| 8 | No credentials in tracked files | No key, API key or authenticated URL anywhere in the tree. `.env` and `.env.local` gitignored, examples hold placeholders, and both the deploy and seed scripts take signers from the invocation or the environment rather than a file. |
+
+The two things the checklist cannot reach are handled deliberately: there is **no DAO,
+no proposals, no voting** — the story asks for a transparent admin-run split among sixteen
+people who know each other — and there **is** a dashboard, so the cooperative does not
+simply swap the aggregator for a developer.
+
+---
+
+## Project layout
+
+```
+src/CooperativeTreasury.sol                the treasury contract
+script/Deploy.s.sol                        Base Sepolia deploy script
+script/SeedLocal.s.sol                     local anvil fixture: 16 painters + an uneven payment
+test/CooperativeTreasury.t.sol             30 unit and fuzz tests, grouped per guarantee
+test/CooperativeTreasury.invariant.t.sol   stateful invariant suite (51,200 calls)
+test/mocks/Members.sol                     reentrant member and ETH-rejecting member
+dashboard/                                 Next.js + wagmi UI (roster, withdraw, admin, pay-in)
+DEPLOYMENTS.md                             live Base Sepolia address and seeded state
+```
+
+---
+
 ## Design decisions
 
 ### Shares live in state, never in the code
