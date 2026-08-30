@@ -13,7 +13,16 @@ import {
 } from "wagmi";
 import {treasuryAbi} from "@/lib/abi";
 import {treasuryAddress} from "@/lib/wagmi";
-import {HandRule, WarliFrieze} from "./WarliFrieze";
+import {
+  WarliBorder,
+  WarliCarrier,
+  WarliCattle,
+  WarliChaukCorner,
+  WarliHut,
+  WarliTarpaCircle,
+  WarliTree,
+  WarliVillage,
+} from "./warli";
 
 const BPS = 10_000n;
 const EXPLORER = "https://sepolia.basescan.org";
@@ -50,14 +59,29 @@ const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 // small pieces — deliberately not "cards"
 // ---------------------------------------------------------------------------
 
-/** A section marker: small caps, wide tracking, a rule that trails off. */
-function Heading({children, note}: {children: React.ReactNode; note?: string}) {
+/**
+ * A section marker. Each section carries its own motif from the village rather than a
+ * repeated icon — a tree over the ledger, a hut over the roster controls, cattle over the
+ * money coming in. On a Warli wall no two parts of the scene are the same drawing.
+ */
+function Heading({
+  children,
+  note,
+  motif,
+}: {
+  children: React.ReactNode;
+  note?: string;
+  motif?: React.ReactNode;
+}) {
   return (
-    <div className="mb-6">
-      <h2 className="text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-ochre">
-        {children}
-      </h2>
-      {note && <p className="mt-2 max-w-2xl text-sm leading-relaxed text-chalk-dim">{note}</p>}
+    <div className="mb-6 flex items-start gap-4">
+      {motif && <div className="mt-0.5 shrink-0 text-ochre/55">{motif}</div>}
+      <div className="min-w-0">
+        <h2 className="text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-ochre">
+          {children}
+        </h2>
+        {note && <p className="mt-2 max-w-2xl text-sm leading-relaxed text-chalk-dim">{note}</p>}
+      </div>
     </div>
   );
 }
@@ -214,10 +238,10 @@ export default function Home() {
             <span className="text-chalk">Nobody ever saw the math.</span> This is the math.
           </p>
 
-          <WarliFrieze className="mt-9 h-9 w-full max-w-lg text-ochre/40" />
+          <WarliVillage className="mt-10 h-24 w-full max-w-3xl text-ochre/45" />
         </header>
 
-        <HandRule className="mt-8 h-1.5 w-full text-line" />
+        <WarliBorder className="mt-8 h-3 w-full text-ochre/30" />
 
         {/* ============ the standing figures ============ */}
         <section className="mt-9 grid grid-cols-2 gap-x-8 gap-y-7 sm:grid-cols-4">
@@ -242,15 +266,18 @@ export default function Home() {
         {/* ============ your money ============ */}
         {isConnected && (
           <>
-            <HandRule className="mt-10 h-1.5 w-full text-line" />
+            <WarliBorder className="mt-10 h-3 w-full text-ochre/30" />
             <YourShare share={mine} />
           </>
         )}
 
         {/* ============ the ledger ============ */}
-        <HandRule className="mt-10 h-1.5 w-full text-line" />
+        <WarliBorder className="mt-10 h-3 w-full text-ochre/30" />
         <section className="mt-9">
-          <Heading note="Read live from the contract. A payment arriving this second would divide exactly like this — the shares are not a snapshot, and not a promise.">
+          <Heading
+            motif={<WarliTree className="h-12 w-8" />}
+            note="Read live from the contract. A payment arriving this second would divide exactly like this — the shares are not a snapshot, and not a promise."
+          >
             The ledger
           </Heading>
 
@@ -343,14 +370,17 @@ export default function Home() {
         </section>
 
         {/* ============ things you can do ============ */}
-        <HandRule className="mt-10 h-1.5 w-full text-line" />
+        <WarliBorder className="mt-10 h-3 w-full text-ochre/30" />
         <div className="mt-9 grid gap-12 lg:grid-cols-2">
           <BuyerPanel />
           {isAdmin.data ? (
             <AdminPanel />
           ) : (
             <section>
-              <Heading note="Adding or removing a painter changes who the next payment reaches. The controls appear here for an address holding COOP_ADMIN_ROLE.">
+              <Heading
+                motif={<WarliHut className="h-9 w-10" />}
+                note="Adding or removing a painter changes who the next payment reaches. The controls appear here for an address holding COOP_ADMIN_ROLE."
+              >
                 Cooperative admin
               </Heading>
               <p className="text-sm text-chalk-faint">
@@ -363,7 +393,7 @@ export default function Home() {
         </div>
 
         {/* ============ footer ============ */}
-        <HandRule className="mt-14 h-1.5 w-full text-line" />
+        <WarliBorder className="mt-14 h-3 w-full text-ochre/30" />
         <footer className="mt-7 flex flex-wrap items-end justify-between gap-6">
           <div className="text-[0.7rem] leading-relaxed text-chalk-faint">
             <a
@@ -377,7 +407,7 @@ export default function Home() {
             <br />
             Base Sepolia · Road to Devcon II · Art, Culture &amp; Ethereum in India
           </div>
-          <WarliFrieze className="h-7 w-44 text-ochre/25" />
+          <WarliTarpaCircle className="h-24 w-24 text-ochre/35" />
         </footer>
       </main>
     </div>
@@ -394,7 +424,7 @@ function YourShare({share}: {share?: {account: Address; shareBps: bigint; withdr
   if (!share) {
     return (
       <section className="mt-9">
-        <Heading>Your share</Heading>
+        <Heading motif={<WarliCarrier className="h-11 w-6" />}>Your share</Heading>
         <p className="max-w-xl text-sm leading-relaxed text-chalk-dim">
           This wallet is not on the roster, so it accrues nothing from payments. Only current
           members do — which is exactly the point.
@@ -404,8 +434,16 @@ function YourShare({share}: {share?: {account: Address; shareBps: bigint; withdr
   }
 
   return (
-    <section className="mt-9">
-      <Heading>Your share</Heading>
+    <section className="relative mt-9">
+      {/*
+        The chauk is the square Warli paint on a wall for a wedding — the drawing reserved
+        for the occasion that matters. Getting paid is that occasion here, so it frames
+        this and nothing else on the page.
+      */}
+      <WarliChaukCorner className="pointer-events-none absolute -left-3 -top-3 h-12 w-12 text-ochre/25" />
+      <WarliChaukCorner className="pointer-events-none absolute -bottom-3 -right-3 h-12 w-12 rotate-180 text-ochre/25" />
+
+      <Heading motif={<WarliCarrier className="h-11 w-6" />}>Your share</Heading>
       <div className="flex flex-wrap items-end justify-between gap-8">
         <div>
           <p className="font-[family-name:var(--font-display)] text-[3.2rem] leading-[0.9] text-chalk sm:text-[4rem]">
@@ -450,7 +488,10 @@ function AdminPanel() {
 
   return (
     <section>
-      <Heading note="Adding or removing a painter changes who the next payment reaches. Shares are entered as percentages.">
+      <Heading
+        motif={<WarliHut className="h-9 w-10" />}
+        note="Adding or removing a painter changes who the next payment reaches. Shares are entered as percentages."
+      >
         Cooperative admin
       </Heading>
 
@@ -522,7 +563,10 @@ function BuyerPanel() {
 
   return (
     <section>
-      <Heading note="The split happens in the same transaction, across whoever is on the roster at that moment. You see the arithmetic before you sign it.">
+      <Heading
+        motif={<WarliCattle className="h-8 w-12" />}
+        note="The split happens in the same transaction, across whoever is on the roster at that moment. You see the arithmetic before you sign it."
+      >
         Pay the cooperative
       </Heading>
 
