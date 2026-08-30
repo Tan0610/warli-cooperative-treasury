@@ -1,6 +1,6 @@
 "use client";
 
-import {useState} from "react";
+import {useMemo, useState} from "react";
 import {formatEther, formatUnits, isAddress, parseEther, type Address} from "viem";
 import {
   useAccount,
@@ -8,9 +8,11 @@ import {
   useConnect,
   useDisconnect,
   useReadContract,
+  useSwitchChain,
   useWaitForTransactionReceipt,
   useWriteContract,
 } from "wagmi";
+import {baseSepolia} from "wagmi/chains";
 import {treasuryAbi} from "@/lib/abi";
 import {treasuryAddress} from "@/lib/wagmi";
 import {
@@ -143,18 +145,28 @@ function TxStatus({hash, error}: {hash?: `0x${string}`; error?: Error | null}) {
 // ---------------------------------------------------------------------------
 
 export default function Home() {
-  const {address, isConnected} = useAccount();
-  const {connect, connectors} = useConnect();
+  const {address, isConnected, chainId} = useAccount();
+  const {connect, connectors, isPending: connecting, error: connectError} = useConnect();
   const {disconnect} = useDisconnect();
+  const {switchChain, isPending: switching} = useSwitchChain();
 
-  // EIP-6963 discovery can surface the same wallet more than once, and wagmi's generic
-  // "Injected" entry duplicates a named one. Showing two identical buttons is worse than
-  // showing one, so keep the first connector per name and drop the unnamed fallback when
-  // a real wallet was discovered.
-  const wallets = connectors.filter((c, i, all) => {
-    if (all.findIndex((o) => o.name === c.name) !== i) return false;
-    return !(c.id === "injected" && all.some((o) => o.id !== "injected"));
-  });
+  /**
+   * With MetaMask installed you get the same wallet twice: wagmi's `injected()` connector
+   * reports the detected provider's own name, and EIP-6963 discovery finds it again under
+   * its rdns. Two identical buttons is worse than one — but deduping naively can drop
+   * both, so this keeps exactly one per name and prefers the discovered connector over the
+   * generic shim rather than assuming an order.
+   */
+  const wallets = useMemo(() => {
+    const byName = new Map<string, (typeof connectors)[number]>();
+    for (const c of connectors) {
+      const seen = byName.get(c.name);
+      if (!seen || (seen.id === "injected" && c.id !== "injected")) byName.set(c.name, c);
+    }
+    return [...byName.values()];
+  }, [connectors]);
+
+  const wrongChain = isConnected && chainId !== baseSepolia.id;
 
   const configured = isAddress(treasuryAddress);
   const common = {address: treasuryAddress, abi: treasuryAbi, query: {enabled: configured}} as const;
@@ -209,12 +221,23 @@ export default function Home() {
               </h1>
             </div>
 
-            <div className="flex shrink-0 flex-col items-end gap-2 pt-2">
+            <div className="flex max-w-[15rem] shrink-0 flex-col items-end gap-2 pt-2">
               {isConnected ? (
                 <>
                   <p className="font-[family-name:var(--font-mono)] text-sm text-chalk">
                     {short(address!)}
                   </p>
+                  {wrongChain ? (
+                    <Button
+                      variant="quiet"
+                      disabled={switching}
+                      onClick={() => switchChain({chainId: baseSepolia.id})}
+                    >
+                      {switching ? "Switching…" : "Switch to Base Sepolia"}
+                    </Button>
+                  ) : (
+                    <span className="text-xs text-chalk-faint">Base Sepolia</span>
+                  )}
                   <button
                     onClick={() => disconnect()}
                     className="text-xs text-chalk-faint underline underline-offset-4 hover:text-ochre"
@@ -223,11 +246,25 @@ export default function Home() {
                   </button>
                 </>
               ) : (
-                wallets.map((c) => (
-                  <Button key={c.uid} onClick={() => connect({connector: c})}>
-                    {c.name}
-                  </Button>
-                ))
+                <>
+                  {wallets.length === 0 && (
+                    <p className="text-right text-xs leading-relaxed text-chalk-faint">
+                      No browser wallet detected. Install MetaMask, then reload.
+                    </p>
+                  )}
+                  {wallets.map((c) => (
+                    <Button key={c.uid} disabled={connecting} onClick={() => connect({connector: c})}>
+                      {connecting ? "Check your wallet…" : c.name}
+                    </Button>
+                  ))}
+                  {/* Previously a failed connect showed nothing at all, which looked like a
+                      dead button. Say what went wrong instead. */}
+                  {connectError && (
+                    <p className="text-right text-xs leading-relaxed text-terracotta-hi">
+                      {connectError.message.split("\n")[0]}
+                    </p>
+                  )}
+                </>
               )}
             </div>
           </div>
