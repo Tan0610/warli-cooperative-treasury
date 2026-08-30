@@ -39,7 +39,9 @@ export function WarliFrieze({className = ""}: {className?: string}) {
       stroke="currentColor"
       strokeWidth="1.1"
       strokeLinecap="round"
-      preserveAspectRatio="xMidYMid meet"
+      /* xMin, not xMid: at a wide aspect ratio the figures would otherwise be
+         letterboxed into the centre of the element and shrunk. */
+      preserveAspectRatio="xMinYMid meet"
       aria-hidden="true"
       role="presentation"
     >

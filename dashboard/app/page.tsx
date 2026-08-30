@@ -123,6 +123,15 @@ export default function Home() {
   const {connect, connectors} = useConnect();
   const {disconnect} = useDisconnect();
 
+  // EIP-6963 discovery can surface the same wallet more than once, and wagmi's generic
+  // "Injected" entry duplicates a named one. Showing two identical buttons is worse than
+  // showing one, so keep the first connector per name and drop the unnamed fallback when
+  // a real wallet was discovered.
+  const wallets = connectors.filter((c, i, all) => {
+    if (all.findIndex((o) => o.name === c.name) !== i) return false;
+    return !(c.id === "injected" && all.some((o) => o.id !== "injected"));
+  });
+
   const configured = isAddress(treasuryAddress);
   const common = {address: treasuryAddress, abi: treasuryAbi, query: {enabled: configured}} as const;
 
@@ -176,7 +185,7 @@ export default function Home() {
               </h1>
             </div>
 
-            <div className="shrink-0 pt-2 text-right">
+            <div className="flex shrink-0 flex-col items-end gap-2 pt-2">
               {isConnected ? (
                 <>
                   <p className="font-[family-name:var(--font-mono)] text-sm text-chalk">
@@ -184,15 +193,15 @@ export default function Home() {
                   </p>
                   <button
                     onClick={() => disconnect()}
-                    className="mt-1 text-xs text-chalk-faint underline underline-offset-4 hover:text-ochre"
+                    className="text-xs text-chalk-faint underline underline-offset-4 hover:text-ochre"
                   >
                     disconnect
                   </button>
                 </>
               ) : (
-                connectors.map((c) => (
+                wallets.map((c) => (
                   <Button key={c.uid} onClick={() => connect({connector: c})}>
-                    Connect
+                    {c.name}
                   </Button>
                 ))
               )}
