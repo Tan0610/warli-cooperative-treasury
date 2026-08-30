@@ -53,6 +53,29 @@ export function WarliFrieze({className = ""}: {className?: string}) {
 }
 
 /**
+ * A drawn divider. A 1px CSS border is the most recognisable "made by a framework" mark
+ * on a page; a line with a slight waver in it reads as something someone drew. The path
+ * is fixed rather than randomised so it does not shift between server and client render.
+ */
+export function HandRule({className = ""}: {className?: string}) {
+  return (
+    <svg
+      viewBox="0 0 1000 6"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.1"
+      strokeLinecap="round"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+      role="presentation"
+    >
+      <path d="M2 3.4 C 120 2.1, 210 4.3, 330 3.0 S 540 1.9, 660 3.6 S 850 4.4, 998 2.6" />
+    </svg>
+  );
+}
+
+/**
  * The single figure used as a marker beside section headings — the same vocabulary,
  * one dancer instead of eight.
  */
