@@ -170,6 +170,16 @@ live contract: `memberCount() = 16`, `unallocatedShareBps() = 0`,
 Those 7 wei are the point — the dust was carried, not dropped, and you can see it on a
 public network rather than take the README's word for it.
 
+**Source-verified on [Sourcify](https://repo.sourcify.dev/84532/0x617830218A2C86a34F48a5D54e5F5e8D19217732)**
+with an exact match on both creation and runtime bytecode, so the deployed contract is
+provably the code in this repo.
+
+> The dashboard is read-only until you choose to connect — the roster, shares, balances and
+> remainder all load from public RPC reads. Note that MetaMask may warn about the domain:
+> `*.vercel.app` subdomains registered hours ago are a common phishing shape, so the
+> reputation check flags them by default. The page loads no third-party scripts and
+> references no external origin but the block explorer.
+
 ```bash
 cd dashboard && npm install
 echo "NEXT_PUBLIC_TREASURY_ADDRESS=0x617830218A2C86a34F48a5D54e5F5e8D19217732" > .env.local
